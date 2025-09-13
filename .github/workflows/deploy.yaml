@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.tag }}
       - name: Check if tag exists
@@ -30,10 +30,12 @@ jobs:
         with:
           go-version: 1.21.2
       - name: Build app
+        working-directory: sso
         run: |
           go mod download
           go build -o grpc-auth ./cmd/sso
       - name: Build migrator
+        working-directory: sso
         run: |
           go build -o migrator ./cmd/migrator
       - name: Deploy to VM
@@ -42,24 +44,20 @@ jobs:
           echo "$DEPLOY_SSH_KEY" > deploy_key.pem
           chmod 600 deploy_key.pem
           ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "mkdir -p ${{ env.DEPLOY_DIRECTORY }}"
-          rsync -avz -e 'ssh -i deploy_key.pem -o StrictHostKeyChecking=no' --exclude='.git' ./ ${{ env.HOST }}:${{ env.DEPLOY_DIRECTORY }}
-          rsync -avz -e 'ssh -i deploy_key.pem -o StrictHostKeyChecking=no' ./migrator ${{ env.HOST }}:${{ env.DEPLOY_DIRECTORY }}/migrator
+          rsync -avz -e 'ssh -i deploy_key.pem -o StrictHostKeyChecking=no' --exclude='.git' ./sso/ ${{ env.HOST }}:${{ env.DEPLOY_DIRECTORY }}
+          rsync -avz -e 'ssh -i deploy_key.pem -o StrictHostKeyChecking=no' ./sso/migrator ${{ env.HOST }}:${{ env.DEPLOY_DIRECTORY }}/migrator
         env:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       - name: Remove old systemd service file
         run: |
           ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "rm -f /etc/systemd/system/grpc-auth.service"
-      - name: List workspace contents
-        run: |
-          echo "Listing deployment folder contents:"
-          ls -la ${{ github.workspace }}/deployment
       - name: Copy systemd service file
         run: |
-          scp -i deploy_key.pem -o StrictHostKeyChecking=no ${{ github.workspace }}/deployment/grpc-auth.service ${{ env.HOST }}:/tmp/grpc-auth.service
+          scp -i deploy_key.pem -o StrictHostKeyChecking=no ${{ github.workspace }}/sso/deploy/grpc-auth.service ${{ env.HOST }}:/tmp/grpc-auth.service
           ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "mv /tmp/grpc-auth.service /etc/systemd/system/grpc-auth.service"
       - name: Run migrations
         run: |
           ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "${{ env.DEPLOY_DIRECTORY }}/migrator --storage-path=${{ env.DEPLOY_DIRECTORY }}/sso.db --migrations-path=${{ env.DEPLOY_DIRECTORY }}/migrations"
       - name: Start application
         run: |
-          ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "systemctl daemon-reload && systemctl restart grpc-auth.service"      
+          ssh -i deploy_key.pem -o StrictHostKeyChecking=no ${{ env.HOST }} "systemctl daemon-reload && systemctl restart grpc-auth.service"
