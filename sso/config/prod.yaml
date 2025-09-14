@@ -1,5 +1,6 @@
-env: "prod" #dev,prod
-storage_path: "root/apps/grpc-auth/sso.db"
+env: "prod"
+storage_path: "/root/apps/grpc-auth/sso.db"
 grpc:
- port: 44044
- timeout: 5s
+  port: 44044
+  timeout: 5s
+migrations_path: "./migrations"
